@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+# coding: utf-8
+"""Single-axis gimbal aimer node.
+
+Subscribes to a PointStamped topic, transforms the point into the gimbal's (non-rotatin) tf frame, then publishes a
+JointState message (for joint_state_publisher) which aims the gimbal at the point.
+"""
+
+from __future__ import print_function
+
+import copy
+import math
+
+import rospy
+from geometry_msgs.msg import Point, PointStamped
+from sensor_msgs.msg import JointState
+import tf
+
+
+class AimerNode(object):
+
+    def __init__(self):
+        self.gimbal_frame = rospy.get_param('gimbal_frame', 'gimbal_link')
+        self.joint_name = rospy.get_param('gimbal_joint', 'payload_joint')
+        self.tf_listener = tf.TransformListener()
+        self.point_listener = rospy.Subscriber('point', PointStamped, self.point_callback)
+        self.joint_state_pub = rospy.Publisher('~joint_state', JointState, queue_size=10)
+        print('Ready')
+
+    def _transform_point(self, point_message):
+        try:
+            # Use most recent tf available (otherwise, if the point is newer than the tf transformPoint errors)
+            t = self.tf_listener.getLatestCommonTime(self.gimbal_frame, point_message.header.frame_id)
+            point_message_copy = copy.copy(point_message)
+            point_message_copy.header.stamp = t
+
+            point_transformed = self.tf_listener.transformPoint(self.gimbal_frame, point_message_copy).point  # type: Point
+            return point_transformed
+        except tf.TransformException:
+            return None
+
+    def point_callback(self, point_message):
+        point_transformed = self._transform_point(point_message)
+        if point_transformed is None:
+            print('Could not transform point')
+            return
+        angle = math.atan2(point_transformed.z, point_transformed.x)
+        print('Angle:', angle)
+
+        joint_state_message = JointState()
+        joint_state_message.header = point_message.header
+        joint_state_message.name = [self.joint_name]
+        joint_state_message.position = [angle]
+        self.joint_state_pub.publish(joint_state_message)
+
+
+if __name__ == '__main__':
+    rospy.init_node('gimbal_aimer')
+    node = AimerNode()
+    rospy.spin()
+    print('Exiting')

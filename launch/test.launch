@@ -1,0 +1,12 @@
+<launch>
+
+    <param name="use_sim_time" value="true" />
+
+    <node name="rosbag_play" pkg="rosbag" type="play" required="true"
+          args="--clock $(find gimbal_aimer)/test_data/disco_tree_nojointstate_2017-11-14-17-53-00.bag" />
+    <include file="$(find disco_description)/launch/display.launch" />
+    <node name="gimbal_aimer" pkg="gimbal_aimer" type="aimer" output="screen">
+        <remap from="point" to="/mocap/rigid_bodies/2/marker1" />
+    </node>
+
+</launch>
