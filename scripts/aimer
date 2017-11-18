@@ -48,12 +48,27 @@ class AimerNode(object):
         except tf.Exception:
             return None
 
+    def _should_control(self, transformed_point):
+        """Decide whether we're close enough to start aiming."""
+        p = transformed_point
+        close_enough = (p.x**2 + p.y**2 + p.z**2) <= 1
+        if not close_enough:
+            print('Not close enough')
+        in_front_of = p.x > 0
+        if not in_front_of:
+            print('Not in front of')
+        return close_enough and in_front_of
+
     def point_callback(self, point_message):
-        point_transformed = self._transform_point(point_message)
-        if point_transformed is None:
+        transformed_point = self._transform_point(point_message)
+        if transformed_point is None:
             print('Could not transform point')
             return
-        angle = math.atan2(point_transformed.z, point_transformed.x)
+
+        if not self._should_control(transformed_point):
+            return
+
+        angle = math.atan2(transformed_point.z, transformed_point.x)
         print('Angle:', angle)
 
         if self.joint_state_pub:
