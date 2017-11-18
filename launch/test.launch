@@ -7,6 +7,7 @@
     <include file="$(find disco_description)/launch/display.launch" />
     <node name="gimbal_aimer" pkg="gimbal_aimer" type="aimer" output="screen">
         <remap from="point" to="/mocap/rigid_bodies/2/marker1" />
+        <param name="control_gimbal" value="false" />
     </node>
 
 </launch>

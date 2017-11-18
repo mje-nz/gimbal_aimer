@@ -14,6 +14,7 @@ import math
 import rospy
 from geometry_msgs.msg import Point, PointStamped
 from sensor_msgs.msg import JointState
+from mavros_msgs.msg import MountControl
 import tf
 
 
@@ -24,7 +25,15 @@ class AimerNode(object):
         self.joint_name = rospy.get_param('gimbal_joint', 'payload_joint')
         self.tf_listener = tf.TransformListener()
         self.point_listener = rospy.Subscriber('point', PointStamped, self.point_callback)
-        self.joint_state_pub = rospy.Publisher('~joint_state', JointState, queue_size=10)
+
+        self.joint_state_pub = None
+        if rospy.get_param('~publish_joint_state', True):
+            self.joint_state_pub = rospy.Publisher('~joint_state', JointState, queue_size=1)
+
+        self.mount_control_pub = None
+        if rospy.get_param('~control_gimbal', True):
+            self.mount_control_pub = rospy.Publisher('~mount_control', MountControl, queue_size=1)
+
         print('Ready')
 
     def _transform_point(self, point_message):
@@ -36,7 +45,7 @@ class AimerNode(object):
 
             point_transformed = self.tf_listener.transformPoint(self.gimbal_frame, point_message_copy).point  # type: Point
             return point_transformed
-        except tf.TransformException:
+        except tf.Exception:
             return None
 
     def point_callback(self, point_message):
@@ -47,11 +56,17 @@ class AimerNode(object):
         angle = math.atan2(point_transformed.z, point_transformed.x)
         print('Angle:', angle)
 
-        joint_state_message = JointState()
-        joint_state_message.header = point_message.header
-        joint_state_message.name = [self.joint_name]
-        joint_state_message.position = [angle]
-        self.joint_state_pub.publish(joint_state_message)
+        if self.joint_state_pub:
+            joint_state_message = JointState()
+            joint_state_message.header = point_message.header
+            joint_state_message.name = [self.joint_name]
+            joint_state_message.position = [angle]
+            self.joint_state_pub.publish(joint_state_message)
+
+        if self.mount_control_pub:
+            mount_control_message = MountControl()
+            mount_control_message.mode = MountControl.MODE_MAVLINK_TARGETING
+            mount_control_message.pitch = math.degrees(angle)
 
 
 if __name__ == '__main__':
