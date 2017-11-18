@@ -4,6 +4,8 @@
 
 Subscribes to a PointStamped topic, transforms the point into the gimbal's (non-rotatin) tf frame, then publishes a
 JointState message (for joint_state_publisher) which aims the gimbal at the point.
+
+An angle of zero is horizontal, positive is up, negative is down.
 """
 
 from __future__ import print_function
@@ -25,6 +27,9 @@ class AimerNode(object):
         self.joint_name = rospy.get_param('gimbal_joint', 'payload_joint')
         self.tf_listener = tf.TransformListener()
         self.point_listener = rospy.Subscriber('point', PointStamped, self.point_callback)
+
+        self.min_angle = math.radians(rospy.get_param('~min_angle', -90))
+        self.max_angle = math.radians(rospy.get_param('~max_angle', 90))
 
         self.joint_state_pub = None
         if rospy.get_param('~publish_joint_state', True):
@@ -70,6 +75,8 @@ class AimerNode(object):
 
         angle = math.atan2(transformed_point.z, transformed_point.x)
         print('Angle:', angle)
+
+        angle = max(min(angle, self.max_angle), self.min_angle)
 
         if self.joint_state_pub:
             joint_state_message = JointState()

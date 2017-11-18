@@ -8,6 +8,8 @@
     <node name="gimbal_aimer" pkg="gimbal_aimer" type="aimer" output="screen">
         <remap from="point" to="/mocap/rigid_bodies/2/marker1" />
         <param name="control_gimbal" value="false" />
+        <param name="max_angle" value="45" />
+        <param name="min_angle" value="-45" />
     </node>
 
 </launch>
