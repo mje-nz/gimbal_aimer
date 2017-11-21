@@ -17,7 +17,8 @@ import rospy
 from geometry_msgs.msg import Point, PointStamped
 from sensor_msgs.msg import JointState
 from mavros_msgs.msg import MountControl
-import tf
+import tf2_geometry_msgs
+import tf2_ros
 
 
 class AimerNode(object):
@@ -25,7 +26,8 @@ class AimerNode(object):
     def __init__(self):
         self.gimbal_frame = rospy.get_param('gimbal_frame', 'gimbal_link')
         self.joint_name = rospy.get_param('gimbal_joint', 'payload_joint')
-        self.tf_listener = tf.TransformListener()
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.point_listener = rospy.Subscriber('point', PointStamped, self.point_callback)
 
         self.min_angle = math.radians(rospy.get_param('~min_angle', -90))
@@ -38,19 +40,15 @@ class AimerNode(object):
         self.mount_control_pub = None
         if rospy.get_param('~control_gimbal', True):
             self.mount_control_pub = rospy.Publisher('~mount_control', MountControl, queue_size=1)
+        self.last_mount_control_pub = rospy.Time()
 
         print('Ready')
 
     def _transform_point(self, point_message):
         try:
-            # Use most recent tf available (otherwise, if the point is newer than the tf transformPoint errors)
-            t = self.tf_listener.getLatestCommonTime(self.gimbal_frame, point_message.header.frame_id)
-            point_message_copy = copy.copy(point_message)
-            point_message_copy.header.stamp = t
-
-            point_transformed = self.tf_listener.transformPoint(self.gimbal_frame, point_message_copy).point  # type: Point
-            return point_transformed
-        except tf.Exception:
+            return self.tf_buffer.transform(point_message, self.gimbal_frame, timeout=rospy.Duration(0.1)).point
+        except tf2_ros.TransformException as e:
+            print(e)
             return None
 
     def _should_control(self, transformed_point):
@@ -70,13 +68,14 @@ class AimerNode(object):
             print('Could not transform point')
             return
 
-        if not self._should_control(transformed_point):
-            return
+        if self._should_control(transformed_point):
+            angle = math.atan2(transformed_point.z, transformed_point.x)
+            print('Angle:', angle)
 
-        angle = math.atan2(transformed_point.z, transformed_point.x)
-        print('Angle:', angle)
+            angle = max(min(angle, self.max_angle), self.min_angle)
+        else:
+            angle = 0
 
-        angle = max(min(angle, self.max_angle), self.min_angle)
 
         if self.joint_state_pub:
             joint_state_message = JointState()
@@ -85,10 +84,12 @@ class AimerNode(object):
             joint_state_message.position = [angle]
             self.joint_state_pub.publish(joint_state_message)
 
-        if self.mount_control_pub:
+        if self.mount_control_pub and rospy.Time.now() - self.last_mount_control_pub > rospy.Duration(0.01):
             mount_control_message = MountControl()
             mount_control_message.mode = MountControl.MODE_MAVLINK_TARGETING
             mount_control_message.pitch = math.degrees(angle)
+            self.mount_control_pub.publish(mount_control_message)
+            self.last_mount_control_pub = rospy.Time.now()
 
 
 if __name__ == '__main__':
